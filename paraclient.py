@@ -14,6 +14,8 @@ def do_process(tiddlers):
     write_index = 0
     read_index = 0
 
+    tiddler_data = {}
+
     def add_socket():
         try:
             client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -37,26 +39,21 @@ def do_process(tiddlers):
                 inputs, outputs, [])
 
         for element in readable:
-            output = ''
-            while True:
-                try:
-                    data = element.recv(1024)
-                except socket.error, exc:
-                    if exc.errno != 35:
-                        raise
-                else:
-                    if data:
-                        output += data
-                    else:
-                        break
+            element_done = handle_read(element, tiddler_data)
 
-            yield output[:3]
-            try:
-                element.close()
-            except socket.error, exc:
-                print 'error closing socket', exc
-            inputs.remove(element)
-            read_index += 1
+            if element_done:
+                yield tiddler_data[element][:3]
+                del tiddler_data[element]
+                try:
+                    element.shutdown(socket.SHUT_RDWR)
+                except socket.error, exc:
+                    pass
+                try:
+                    element.close()
+                except socket.error, exc:
+                    print 'error closing socket', exc
+                inputs.remove(element)
+                read_index += 1
 
         for element in writable:
             if write_index < max_index:
@@ -76,6 +73,26 @@ def do_process(tiddlers):
 
         for element in exceptional:
             pass
+
+
+def handle_read(element, tiddler_data):
+    """
+    Read a piece of available data on socket element. If the
+    socket tells us we have all the data return True.
+    """
+    element_done = False
+    try:
+        data = element.recv(1024)
+        if element in tiddler_data:
+            tiddler_data[element] += data
+        else:
+            tiddler_data[element] = data
+        if len(data) < 1024:
+            element_done = True
+    except socket.error, exc:
+        if exc.errno != 35:
+            raise
+    return element_done
 
 
 if __name__ == '__main__':

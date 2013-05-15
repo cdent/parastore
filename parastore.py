@@ -14,6 +14,7 @@ STORE = get_store(config)
 class StoreSocketHandler(SocketServer.StreamRequestHandler):
 
     def handle(self):
+        print 'i am process', os.getpid()
         data = self.rfile.readline().strip()
         if data:
             print 'GOT DATA', data
@@ -25,7 +26,7 @@ class StoreSocketHandler(SocketServer.StreamRequestHandler):
                 tiddler = STORE.get(tiddler)
                 self.wfile.write(tiddler.text)
             except StoreError:
-                self.wfile.write('\x00')
+                self.wfile.write('\x00ERROR')
         else:
             print 'DIDNT'
 
@@ -33,7 +34,8 @@ class StoreSocketHandler(SocketServer.StreamRequestHandler):
 class ProcessSocketServer(SocketServer.ForkingMixIn,
         SocketServer.UnixStreamServer):
 
-    request_queue_size = 20
+    #allow_reuse_address = True
+    request_queue_size = 5
     timeout = 30
 
 
@@ -43,8 +45,6 @@ def cleanup():
 
 
 def start_server():
-    store = get_store(config)
-
     server = ProcessSocketServer(SOCKFILE, StoreSocketHandler)
     try:
         server.serve_forever()
