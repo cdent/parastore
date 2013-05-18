@@ -1,12 +1,19 @@
 
 import select
 import socket
+import time
 
 from tiddlyweb.model.tiddler import Tiddler
 
+from parastore import MAX_SERVERS
+
 SOCKFILE = './parastore.sock'
+MAX_RETRIES = 5
+SLEEP_INT = 0.005
 
 def do_process(tiddlers):
+    if not tiddlers:
+        return
     outputs = []
     inputs = []
 
@@ -17,19 +24,27 @@ def do_process(tiddlers):
     tiddler_data = {}
 
     def add_socket():
-        try:
-            client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            client.connect(SOCKFILE)
-            client.setblocking(0)
-            outputs.append(client)
-            inputs.append(client)
-        except socket.error, exc:
-            if exc.errno != 61:
-                raise
-            else:
-                print 'got', exc
+        attempts = 0
+        while attempts < MAX_RETRIES:
+            try:
+                client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                client.connect(SOCKFILE)
+                client.setblocking(0)
+                outputs.append(client)
+                inputs.append(client)
+                break
+            except socket.error, exc:
+                if exc.errno != 61:
+                    raise
+                else:
+                    print 'doing retry'
+                    attempts += 1
+                    time.sleep(SLEEP_INT)
+        else:
+            print 'conn retry attempt failure'
 
-    add_socket()
+    for x in range(MAX_SERVERS):
+        add_socket()
 
     while True:
         if read_index >= max_index:
@@ -37,6 +52,26 @@ def do_process(tiddlers):
 
         readable, writable, exceptional = select.select(
                 inputs, outputs, [])
+
+        for element in writable:
+            if write_index < max_index:
+                try:
+                    tiddler = tiddlers[write_index]
+                    element.sendall('%s:%s' % (tiddler.bag, tiddler.title))
+                    write_index += 1
+                    try:
+                        element.shutdown(socket.SHUT_WR)
+                    except socket.error, exc:
+                        if exc.errno != 57:
+                            raise
+                    outputs.remove(element)
+                    if not outputs and write_index < max_index:
+                        add_socket()
+                except IndexError:
+                    print 'we got confused on tiddler index', element, write_index
+                    break
+            else:
+                outputs.remove(element)
 
         for element in readable:
             element_done = handle_read(element, tiddler_data)
@@ -55,24 +90,7 @@ def do_process(tiddlers):
                 inputs.remove(element)
                 read_index += 1
 
-        for element in writable:
-            if write_index < max_index:
-                try:
-                    if len(outputs) < 2:
-                        add_socket()
-                    tiddler = tiddlers[write_index]
-                    element.sendall('%s:%s\n' % (tiddler.bag, tiddler.title))
-                    write_index += 1
-                    element.shutdown(socket.SHUT_WR)
-                    outputs.remove(element)
-                except IndexError:
-                    print 'we got confused on tiddler index', element, write_index
-                    break
-            else:
-                outputs.remove(element)
 
-        for element in exceptional:
-            pass
 
 
 def handle_read(element, tiddler_data):
@@ -107,11 +125,31 @@ if __name__ == '__main__':
         Tiddler('title 300', 'testbag'),
         Tiddler('title 400', 'testbag'),
         Tiddler('title 500', 'testbag'),
+        Tiddler('title 101', 'testbag'),
+        Tiddler('title 202', 'testbag'),
+        Tiddler('title 303', 'testbag'),
+        Tiddler('title 404', 'testbag'),
+        Tiddler('title 505', 'testbag'),
+        Tiddler('title 111', 'testbag'),
+        Tiddler('title 212', 'testbag'),
+        Tiddler('title 313', 'testbag'),
+        Tiddler('title 414', 'testbag'),
+        Tiddler('title 515', 'testbag'),
         Tiddler('title 10', 'testbag'),
         Tiddler('title 20', 'testbag'),
         Tiddler('title 30', 'testbag'),
         Tiddler('title 40', 'testbag'),
         Tiddler('title 50', 'testbag'),
+        Tiddler('title 11', 'testbag'),
+        Tiddler('title 21', 'testbag'),
+        Tiddler('title 31', 'testbag'),
+        Tiddler('title 41', 'testbag'),
+        Tiddler('title 51', 'testbag'),
+        Tiddler('title 21', 'testbag'),
+        Tiddler('title 22', 'testbag'),
+        Tiddler('title 32', 'testbag'),
+        Tiddler('title 42', 'testbag'),
+        Tiddler('title 52', 'testbag'),
         Tiddler('title 6', 'testbag')])
 
     for thing in x:
