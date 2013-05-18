@@ -3,6 +3,8 @@ import select
 import socket
 import time
 
+from cPickle import loads
+
 from tiddlyweb.model.tiddler import Tiddler
 
 from parastore import MAX_SERVERS
@@ -12,6 +14,7 @@ MAX_RETRIES = 5
 SLEEP_INT = 0.005
 
 def do_process(tiddlers):
+    print 'start', time.time()
     if not tiddlers:
         return
     outputs = []
@@ -37,7 +40,7 @@ def do_process(tiddlers):
                 if exc.errno != 61:
                     raise
                 else:
-                    print 'doing retry'
+                    #print 'doing retry'
                     attempts += 1
                     time.sleep(SLEEP_INT)
         else:
@@ -77,7 +80,8 @@ def do_process(tiddlers):
             element_done = handle_read(element, tiddler_data)
 
             if element_done:
-                yield tiddler_data[element][:3]
+                tiddler = loads(tiddler_data[element])
+                yield tiddler
                 del tiddler_data[element]
                 try:
                     element.shutdown(socket.SHUT_RDWR)
@@ -89,6 +93,7 @@ def do_process(tiddlers):
                     print 'error closing socket', exc
                 inputs.remove(element)
                 read_index += 1
+    print 'finish', time.time()
 
 
 
@@ -153,4 +158,4 @@ if __name__ == '__main__':
         Tiddler('title 6', 'testbag')])
 
     for thing in x:
-        print thing
+        print thing.title, 'in', thing.bag

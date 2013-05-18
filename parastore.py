@@ -2,14 +2,15 @@
 import os
 import sys
 import socket
-from select import select
+
+from cPickle import dumps
 
 from tiddlyweb.config import config
 from tiddlyweb.model.tiddler import Tiddler
 from tiddlyweb.store import StoreError
 from tiddlywebplugins.utils import get_store
 
-MAX_SERVERS = 5
+MAX_SERVERS = 10
 SOCKFILE = './parastore.sock'
 STORE = get_store(config)
 
@@ -24,14 +25,17 @@ def handle(conn):
         else:
             break
     if content:
-        print 'GOT DATA', content, 'in', os.getpid()
+        #print 'GOT DATA', content, 'in', os.getpid()
         bag_name, tiddler_title = content.split(':', 1) #  change to \x00
         bag_name = bag_name.decode('utf-8')
         tiddler_title = tiddler_title.decode('utf-8')
         tiddler = Tiddler(tiddler_title, bag_name)
         try:
             tiddler = STORE.get(tiddler)
-            conn.sendall(tiddler.text)
+            # Store objects notoriously hard to pickle, we can put
+            # it back later
+            del tiddler.store
+            conn.sendall(dumps(tiddler))
         except StoreError, exc:
             print 'got store error', exc
             conn.sendall('\x00ERROR')
@@ -57,7 +61,7 @@ def cleanup():
 def start_servers(count):
     server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     server.bind(SOCKFILE)
-    server.listen(5)
+    server.listen(128)
     children = []
     for child in range(count):
         pid = os.fork()
